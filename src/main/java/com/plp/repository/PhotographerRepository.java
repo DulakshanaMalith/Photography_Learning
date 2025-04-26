@@ -1,7 +1,8 @@
 package com.plp.repository;
 
-import com.plp.model.Photographer;
 import org.springframework.data.mongodb.repository.MongoRepository;
+
+import com.plp.model.Photographer;
 
 public interface PhotographerRepository extends MongoRepository<Photographer, String> {
 } 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Paper,
@@ -15,6 +15,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  CardMedia,
+  Fade,
+  Zoom,
+  Divider,
+  Tooltip,
+  alpha,
 } from '@mui/material';
 import {
   Favorite,
@@ -22,10 +28,15 @@ import {
   Comment,
   Delete,
   Edit,
+  Image,
+  VideoLibrary,
+  Share,
+  AccessTime,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
@@ -37,22 +48,13 @@ const Feed = () => {
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [postComments, setPostComments] = useState({});
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [editingPost, setEditingPost] = useState(null);
   const { user, isAuthenticated, logout, refreshToken } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchPosts();
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (selectedPost) {
-      fetchComments(selectedPost.id);
-    }
-  }, [selectedPost]);
-
-  const getAuthHeader = () => {
+  const getAuthHeader = useCallback(() => {
     const token = localStorage.getItem('token');
     console.log('Debug - getAuthHeader - Token from localStorage:', token ? 'exists' : 'null');
     
@@ -61,7 +63,6 @@ const Feed = () => {
       return null;
     }
 
-    // Basic token validation (check if it's a valid JWT format)
     const tokenParts = token.split('.');
     if (tokenParts.length !== 3) {
       console.error('Invalid token format');
@@ -74,9 +75,9 @@ const Feed = () => {
     };
     console.log('Debug - getAuthHeader - Returning headers:', headers);
     return headers;
-  };
+  }, []);
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       const headers = getAuthHeader();
       if (!headers) {
@@ -90,7 +91,6 @@ const Feed = () => {
       });
 
       const validPosts = response.data.map(post => {
-        // Process author information
         const author = post.author ? {
           id: post.author.id || 'unknown',
           name: post.author.name || 'Unknown User',
@@ -103,14 +103,9 @@ const Feed = () => {
           avatar: null
         };
 
-        // Process and validate comments
         const comments = (post.comments || []).map(comment => {
           console.log('Debug - Processing comment:', comment);
-
-          // Keep the original ID from the server, don't generate one
           const commentId = comment.id;
-
-          // Ensure comment author information is valid
           const commentAuthor = comment.author ? {
             id: comment.author.id || 'unknown',
             name: comment.author.name || 'Unknown User',
@@ -123,15 +118,14 @@ const Feed = () => {
             avatar: null
           };
 
-          // Return validated comment object with original ID
           return {
             ...comment,
-            id: commentId, // Keep original ID
+            id: commentId,
             author: commentAuthor,
             createdAt: comment.createdAt || new Date().toISOString(),
             updatedAt: comment.updatedAt || new Date().toISOString()
           };
-        }).filter(comment => comment.id != null); // Only keep comments with valid IDs
+        }).filter(comment => comment.id != null);
 
         console.log('Debug - Processed comments for post:', comments);
 
@@ -159,9 +153,9 @@ const Feed = () => {
       }
       setPosts([]);
     }
-  };
+  }, [getAuthHeader, refreshToken, logout]);
 
-  const fetchComments = async (postId) => {
+  const fetchComments = useCallback(async (postId) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -170,7 +164,6 @@ const Feed = () => {
         return;
       }
 
-      // Ensure axios defaults are set with the current token
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
       console.log('Debug - Fetching comments for post:', postId);
@@ -199,17 +192,13 @@ const Feed = () => {
         console.log('Debug - fetchComments - Token refresh result:', refreshed);
         
         if (refreshed) {
-          // Get the new token after refresh
           const newToken = localStorage.getItem('token');
           console.log('Debug - fetchComments - Retrying with new token:', newToken.substring(0, 20) + '...');
           
-          // Update axios defaults with new token
           axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
           
-          // Add a small delay to ensure token propagation
           await new Promise(resolve => setTimeout(resolve, 100));
           
-          // Retry the request with new token
           try {
             const retryResponse = await axios.get(`http://localhost:8080/api/feed/${postId}/comments`, {
               headers: {
@@ -241,16 +230,52 @@ const Feed = () => {
         }
       }
     }
+  }, [navigate, refreshToken, logout]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchPosts();
+    }
+  }, [isAuthenticated, fetchPosts]);
+
+  useEffect(() => {
+    if (selectedPost) {
+      fetchComments(selectedPost.id);
+    }
+  }, [selectedPost, fetchComments]);
+
+  const handleImageSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleVideoSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedVideo(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleCreatePost = async () => {
-    if (!newPost.trim()) return;
+    if (!newPost.trim() && !selectedImage && !selectedVideo) return;
     try {
       const headers = getAuthHeader();
       if (!headers) return;
 
       await axios.post('http://localhost:8080/api/feed', {
         content: newPost,
+        imageUrl: selectedImage,
+        videoUrl: selectedVideo,
         author: {
           id: user.id,
           name: user.name,
@@ -260,6 +285,8 @@ const Feed = () => {
         headers: headers
       });
       setNewPost('');
+      setSelectedImage(null);
+      setSelectedVideo(null);
       fetchPosts();
     } catch (error) {
       console.error('Error creating post:', error);
@@ -383,38 +410,6 @@ const Feed = () => {
       if (error.response?.status === 403) {
         if (error.response?.data?.message?.includes('not authorized')) {
           alert('You are not authorized to delete this post');
-        } else {
-          console.warn('Authentication failed. Please log in again.');
-          logout();
-        }
-      }
-    }
-  };
-
-  const handleEditPost = async () => {
-    if (!selectedPost || !selectedPost.id) {
-      console.error('Cannot edit post: post ID is undefined');
-      return;
-    }
-
-    try {
-      const headers = getAuthHeader();
-      if (!headers) return;
-
-      await axios.put(`http://localhost:8080/api/feed/${selectedPost.id}`, {
-        content: editText,
-      }, {
-        headers: headers
-      });
-      
-      setIsEditing(false);
-      setSelectedPost(null);
-      fetchPosts();
-    } catch (error) {
-      console.error('Error editing post:', error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        if (error.response?.data?.includes('not authorized')) {
-          alert('You are not authorized to edit this post');
         } else {
           console.warn('Authentication failed. Please log in again.');
           logout();
@@ -576,7 +571,41 @@ const Feed = () => {
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+      <Fade in={true} timeout={1000}>
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            p: 3, 
+            mb: 3,
+            borderRadius: 2,
+            background: (theme) => `linear-gradient(145deg, ${alpha(theme.palette.background.paper, 0.95)}, ${alpha(theme.palette.primary.light, 0.05)})`,
+            backdropFilter: 'blur(10px)',
+            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Avatar 
+              src={user?.avatar} 
+              alt={user?.name}
+              sx={{ 
+                width: 48, 
+                height: 48, 
+                mr: 2,
+                border: (theme) => `2px solid ${theme.palette.primary.main}`,
+                boxShadow: (theme) => `0 2px 8px ${alpha(theme.palette.primary.main, 0.3)}`,
+              }}
+            />
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                color: 'text.primary',
+                fontWeight: 500,
+                fontSize: '1.1rem',
+              }}
+            >
+              Share your thoughts, {user?.name}...
+            </Typography>
+          </Box>
         <TextField
           fullWidth
           multiline
@@ -584,82 +613,451 @@ const Feed = () => {
           placeholder="What's on your mind?"
           value={newPost}
           onChange={(e) => setNewPost(e.target.value)}
-          sx={{ mb: 2 }}
+            sx={{ 
+              mb: 2,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.8),
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  boxShadow: (theme) => `0 0 0 2px ${alpha(theme.palette.primary.main, 0.2)}`,
+                },
+                '&.Mui-focused': {
+                  boxShadow: (theme) => `0 0 0 2px ${alpha(theme.palette.primary.main, 0.3)}`,
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.2),
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.4),
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: (theme) => theme.palette.primary.main,
+                },
+              },
+              '& .MuiInputBase-input': {
+                color: 'text.primary',
+                fontSize: '1rem',
+                '&::placeholder': {
+                  color: (theme) => alpha(theme.palette.text.primary, 0.6),
+                  opacity: 1,
+                },
+              },
+            }}
         />
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <input
+              accept="image/*"
+              style={{ display: 'none' }}
+              id="image-upload"
+              type="file"
+              onChange={handleImageSelect}
+            />
+            <label htmlFor="image-upload">
+              <Button
+                variant="outlined"
+                component="span"
+                startIcon={<Image />}
+                sx={{ 
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  px: 3,
+                  py: 1.2,
+                  borderColor: (theme) => alpha(theme.palette.common.black, 0.3),
+                  color: (theme) => alpha(theme.palette.common.black, 0.8),
+                  backgroundColor: (theme) => alpha(theme.palette.common.black, 0.03),
+                  fontSize: '0.95rem',
+                  fontWeight: 500,
+                  '&:hover': {
+                    backgroundColor: (theme) => alpha(theme.palette.common.black, 0.08),
+                    borderColor: (theme) => alpha(theme.palette.common.black, 0.5),
+                    transform: 'translateY(-1px)',
+                    boxShadow: (theme) => `0 4px 8px ${alpha(theme.palette.common.black, 0.1)}`,
+                  },
+                  '& .MuiButton-startIcon': {
+                    marginRight: 1,
+                    '& svg': {
+                      fontSize: '1.2rem',
+                      color: (theme) => alpha(theme.palette.common.black, 0.8),
+                    },
+                  },
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                Add Image
+              </Button>
+            </label>
+            <input
+              accept="video/*"
+              style={{ display: 'none' }}
+              id="video-upload"
+              type="file"
+              onChange={handleVideoSelect}
+            />
+            <label htmlFor="video-upload">
+              <Button
+                variant="outlined"
+                component="span"
+                startIcon={<VideoLibrary />}
+                sx={{ 
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  px: 3,
+                  py: 1.2,
+                  borderColor: (theme) => alpha(theme.palette.common.black, 0.3),
+                  color: (theme) => alpha(theme.palette.common.black, 0.8),
+                  backgroundColor: (theme) => alpha(theme.palette.common.black, 0.03),
+                  fontSize: '0.95rem',
+                  fontWeight: 500,
+                  '&:hover': {
+                    backgroundColor: (theme) => alpha(theme.palette.common.black, 0.08),
+                    borderColor: (theme) => alpha(theme.palette.common.black, 0.5),
+                    transform: 'translateY(-1px)',
+                    boxShadow: (theme) => `0 4px 8px ${alpha(theme.palette.common.black, 0.1)}`,
+                  },
+                  '& .MuiButton-startIcon': {
+                    marginRight: 1,
+                    '& svg': {
+                      fontSize: '1.2rem',
+                      color: (theme) => alpha(theme.palette.common.black, 0.8),
+                    },
+                  },
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                Add Video
+              </Button>
+            </label>
+          </Box>
+          {selectedImage && (
+            <Box sx={{ 
+              mb: 2,
+              position: 'relative',
+              '&:hover .remove-button': {
+                opacity: 1,
+              },
+            }}>
+              <img
+                src={selectedImage}
+                alt="Selected"
+                style={{ 
+                  maxWidth: '100%', 
+                  maxHeight: '200px',
+                  borderRadius: 8,
+                  objectFit: 'cover',
+                  boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.common.black, 0.1)}`,
+                }}
+              />
+              <Button
+                size="small"
+                onClick={() => setSelectedImage(null)}
+                className="remove-button"
+                sx={{ 
+                  mt: 1,
+                  color: 'error.main',
+                  opacity: 0.7,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    opacity: 1,
+                    backgroundColor: (theme) => alpha(theme.palette.error.main, 0.1),
+                  },
+                }}
+              >
+                Remove Image
+              </Button>
+            </Box>
+          )}
+          {selectedVideo && (
+            <Box sx={{ 
+              mb: 2,
+              position: 'relative',
+              '&:hover .remove-button': {
+                opacity: 1,
+              },
+            }}>
+              <video
+                src={selectedVideo}
+                controls
+                style={{ 
+                  maxWidth: '100%', 
+                  maxHeight: '200px',
+                  borderRadius: 8,
+                  boxShadow: (theme) => `0 4px 12px ${alpha(theme.palette.common.black, 0.1)}`,
+                }}
+              />
+              <Button
+                size="small"
+                onClick={() => setSelectedVideo(null)}
+                className="remove-button"
+                sx={{ 
+                  mt: 1,
+                  color: 'error.main',
+                  opacity: 0.7,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    opacity: 1,
+                    backgroundColor: (theme) => alpha(theme.palette.error.main, 0.1),
+                  },
+                }}
+              >
+                Remove Video
+              </Button>
+            </Box>
+          )}
         <Button
           variant="contained"
           color="primary"
           onClick={handleCreatePost}
-          disabled={!newPost.trim()}
+            disabled={!newPost.trim() && !selectedImage && !selectedVideo}
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 4,
+              py: 1.5,
+              fontSize: '1rem',
+              fontWeight: 500,
+              boxShadow: (theme) => `0 4px 14px 0 ${alpha(theme.palette.primary.main, 0.4)}`,
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: (theme) => `0 6px 20px 0 ${alpha(theme.palette.primary.main, 0.4)}`,
+              },
+              '&:disabled': {
+                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                color: 'white',
+              },
+              transition: 'all 0.3s ease',
+            }}
         >
           Post
         </Button>
       </Paper>
+      </Fade>
 
-      {posts.map((post) => (
-        <Card key={post.id} sx={{ mb: 3 }}>
+      {posts.map((post, index) => (
+        <Zoom in={true} style={{ transitionDelay: `${index * 100}ms` }} key={post.id}>
+          <Card 
+            sx={{ 
+              mb: 3,
+              borderRadius: 2,
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: (theme) => `0 8px 24px 0 ${alpha(theme.palette.common.black, 0.15)}`,
+              },
+            }}
+          >
           <CardContent>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
               <Avatar 
                 src={post.author?.avatar || '/default-avatar.png'} 
                 alt={post.author?.name || 'Anonymous User'}
-                sx={{ mr: 2 }} 
+                  sx={{ 
+                    mr: 2,
+                    width: 48,
+                    height: 48,
+                    border: (theme) => `2px solid ${theme.palette.primary.main}`,
+                  }} 
               />
-              <Typography variant="h6">
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 {post.author?.name || 'Anonymous User'}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AccessTime sx={{ fontSize: 16, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
               </Typography>
             </Box>
-            <Typography variant="body1">{post.content}</Typography>
+                </Box>
+              </Box>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  mb: 2,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {post.content}
+              </Typography>
+              {post.imageUrl && (
+                <CardMedia
+                  component="img"
+                  image={post.imageUrl}
+                  alt="Post image"
+                  sx={{ 
+                    mt: 2, 
+                    maxHeight: '400px', 
+                    objectFit: 'contain',
+                    borderRadius: 1,
+                  }}
+                />
+              )}
+              {post.videoUrl && (
+                <CardMedia
+                  component="video"
+                  src={post.videoUrl}
+                  controls
+                  sx={{ 
+                    mt: 2, 
+                    maxHeight: '400px',
+                    borderRadius: 1,
+                  }}
+                />
+              )}
           </CardContent>
-          <CardActions>
+            <Divider />
+            <CardActions sx={{ px: 2, py: 1 }}>
+              <Tooltip title={post.likes?.includes(user?.email) ? "Unlike" : "Like"}>
             <IconButton
               onClick={() => handleLike(post.id)}
-              color={post.likes?.includes(user?.email) ? 'secondary' : 'default'}
+                  sx={{ 
+                    color: post.likes?.includes(user?.email) ? 'secondary.main' : 'text.secondary',
+                    '&:hover': {
+                      color: 'secondary.main',
+                      transform: 'scale(1.1)',
+                    },
+                    transition: 'all 0.2s ease',
+                  }}
             >
               {post.likes?.includes(user?.email) ? <Favorite /> : <FavoriteBorder />}
             </IconButton>
-            <Typography>{post.likes?.length || 0}</Typography>
-            <IconButton onClick={() => setSelectedPost(post)}>
+              </Tooltip>
+              <Typography variant="body2" color="text.secondary">
+                {post.likes?.length || 0}
+              </Typography>
+              <Tooltip title="Comment">
+                <IconButton 
+                  onClick={() => setSelectedPost(post)}
+                  sx={{ 
+                    color: 'text.secondary',
+                    '&:hover': {
+                      color: 'primary.main',
+                      transform: 'scale(1.1)',
+                    },
+                    transition: 'all 0.2s ease',
+                  }}
+                >
               <Comment />
             </IconButton>
-            <Typography>{post.commentCount || 0}</Typography>
+              </Tooltip>
+              <Typography variant="body2" color="text.secondary">
+                {post.commentCount || 0}
+              </Typography>
+              <Tooltip title="Share">
+                <IconButton 
+                  sx={{ 
+                    color: 'text.secondary',
+                    '&:hover': {
+                      color: 'primary.main',
+                      transform: 'scale(1.1)',
+                    },
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <Share />
+                </IconButton>
+              </Tooltip>
             {post.author?.id === user?.id && (
               <>
-                <IconButton onClick={() => {
-                  setSelectedPost(post);
+                <Tooltip title="Edit">
+                  <IconButton 
+                    onClick={() => {
+                      setEditingPost(post);
                   setIsEditing(true);
                   setEditText(post.content);
-                }}>
+                    }}
+                    sx={{ 
+                      color: 'text.secondary',
+                      '&:hover': {
+                        color: 'primary.main',
+                        transform: 'scale(1.1)',
+                      },
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
                   <Edit />
                 </IconButton>
-                <IconButton onClick={() => handleDeletePost(post.id)}>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton 
+                    onClick={() => handleDeletePost(post.id)}
+                    sx={{ 
+                      color: 'text.secondary',
+                      '&:hover': {
+                        color: 'error.main',
+                        transform: 'scale(1.1)',
+                      },
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
                   <Delete />
                 </IconButton>
+                </Tooltip>
               </>
             )}
           </CardActions>
         </Card>
+        </Zoom>
       ))}
 
-      <Dialog open={!!selectedPost} onClose={() => setSelectedPost(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Comments</DialogTitle>
-        <DialogContent>
+      <Dialog 
+        open={!!selectedPost} 
+        onClose={() => setSelectedPost(null)} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden',
+          },
+        }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          pb: 2,
+        }}>
+          Comments
+        </DialogTitle>
+        <DialogContent sx={{ p: 2 }}>
           <Box sx={{ mb: 2 }}>
             {postComments[selectedPost?.id]?.map((comment) => (
-              <Card key={comment.id} sx={{ mb: 1, bgcolor: 'grey.100' }}>
+              <Card 
+                key={comment.id} 
+                sx={{ 
+                  mb: 1, 
+                  bgcolor: 'grey.50',
+                  borderRadius: 2,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    bgcolor: 'grey.100',
+                  },
+                }}
+              >
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <Avatar 
                       src={comment.author?.avatar} 
-                      sx={{ width: 24, height: 24, mr: 1 }}
+                      sx={{ 
+                        width: 32, 
+                        height: 32, 
+                        mr: 1,
+                        border: (theme) => `1px solid ${theme.palette.primary.main}`,
+                      }}
                     >
                       {comment.author?.name?.[0] || '?'}
                     </Avatar>
-                    <Typography variant="subtitle2">
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                       {comment.author?.name || 'Unknown User'}
                     </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                    </Typography>
                   </Box>
-                  
+                  </Box>
                   {editingCommentId === comment.id ? (
                     <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                       <TextField
@@ -667,12 +1065,21 @@ const Feed = () => {
                         size="small"
                         value={editCommentText}
                         onChange={(e) => setEditCommentText(e.target.value)}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                          },
+                        }}
                       />
                       <Button 
                         size="small" 
                         variant="contained" 
                         onClick={() => {
                           handleUpdateComment(selectedPost.id, comment.id, editCommentText);
+                        }}
+                        sx={{ 
+                          borderRadius: 2,
+                          textTransform: 'none',
                         }}
                       >
                         Save
@@ -683,20 +1090,37 @@ const Feed = () => {
                           setEditingCommentId(null);
                           setEditCommentText('');
                         }}
+                        sx={{ 
+                          borderRadius: 2,
+                          textTransform: 'none',
+                        }}
                       >
                         Cancel
                       </Button>
                     </Box>
                   ) : (
-                    <>
-                      <Typography variant="body2">{comment.content}</Typography>
+                    <Typography variant="body2" sx={{ pl: 4 }}>
+                      {comment.content}
+                    </Typography>
+                  )}
                       {comment.author?.email === user?.email && (
-                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'flex-end', 
+                      mt: 1,
+                      gap: 1,
+                    }}>
                           <IconButton 
                             size="small" 
                             onClick={() => {
                               setEditingCommentId(comment.id);
                               setEditCommentText(comment.content);
+                            }}
+                        sx={{ 
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'primary.main',
+                          },
                             }}
                           >
                             <Edit fontSize="small" />
@@ -704,27 +1128,53 @@ const Feed = () => {
                           <IconButton 
                             size="small" 
                             onClick={() => handleDeleteComment(selectedPost.id, comment.id)}
+                        sx={{ 
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'error.main',
+                          },
+                        }}
                           >
                             <Delete fontSize="small" />
                           </IconButton>
                         </Box>
-                      )}
-                    </>
                   )}
                 </CardContent>
               </Card>
             ))}
           </Box>
           
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1,
+            position: 'sticky',
+            bottom: 0,
+            bgcolor: 'background.paper',
+            pt: 2,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+          }}>
             <TextField
               fullWidth
               size="small"
               placeholder="Write a comment..."
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                },
+              }}
             />
-            <Button variant="contained" onClick={handleComment}>
+            <Button 
+              variant="contained" 
+              onClick={handleComment}
+              sx={{ 
+                borderRadius: 2,
+                textTransform: 'none',
+                px: 3,
+              }}
+            >
               Post
             </Button>
           </Box>
@@ -733,7 +1183,17 @@ const Feed = () => {
 
       <Dialog
         open={isEditing}
-        onClose={() => setIsEditing(false)}
+        onClose={() => {
+          setIsEditing(false);
+          setEditingPost(null);
+          setEditText('');
+        }}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden',
+          },
+        }}
       >
         <DialogTitle>Edit Post</DialogTitle>
         <DialogContent>
@@ -743,11 +1203,64 @@ const Feed = () => {
             rows={3}
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
+            sx={{
+              mt: 2,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+              },
+            }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsEditing(false)}>Cancel</Button>
-          <Button onClick={handleEditPost}>Save</Button>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button 
+            onClick={() => {
+              setIsEditing(false);
+              setEditingPost(null);
+              setEditText('');
+            }}
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={async () => {
+              if (!editingPost || !editingPost.id) return;
+              try {
+                const headers = getAuthHeader();
+                if (!headers) return;
+                await axios.put(`http://localhost:8080/api/feed/${editingPost.id}`, {
+                  content: editText,
+                }, {
+                  headers: headers
+                });
+                setIsEditing(false);
+                setEditingPost(null);
+                setEditText('');
+                fetchPosts();
+              } catch (error) {
+                console.error('Error editing post:', error);
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                  if (error.response?.data?.includes('not authorized')) {
+                    alert('You are not authorized to edit this post');
+                  } else {
+                    console.warn('Authentication failed. Please log in again.');
+                    logout();
+                  }
+                }
+              }
+            }}
+            variant="contained"
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 3,
+            }}
+          >
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>

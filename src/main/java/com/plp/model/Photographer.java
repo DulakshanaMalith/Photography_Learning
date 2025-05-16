@@ -1,142 +1,76 @@
 package com.plp.model;
 
-import java.util.Date;
-
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.mapping.Field;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.HashMap;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Document(collection = "photographers")
-public class Photographer {
+@Getter
+@Setter
+@Document(collection = "messages")
+public class Message {
     @Id
-    private String id;
+    private String _id;
+    private String senderId;
+    private String recipientId;
+    private String content;
+    private LocalDateTime timestamp;
+    private boolean read;
+    private MessageStatus status;
+    private MessageType type;
+    private boolean deleted;
+    private boolean edited;
+    private LocalDateTime editedAt;
+    private Map<String, String> reactions;
+    private Map<String, Object> metadata;
 
-    private String name;
-    private String email;
-    private String phoneNumber;
-    private String location;
-    private String specialties;
-    private String experience;
-    private String portfolioUrl;
-    private String avatarUrl;
-    private String qualifications;
-    private String budget;
-
-    @Field("created_at")
-    private Date createdAt;
-
-    @Field("updated_at")
-    private Date updatedAt;
-
-    // Getters and Setters
-    public String getId() {
-        return id;
+    public enum MessageStatus {
+        SENT,
+        DELIVERED,
+        READ
     }
 
-    public void setId(String id) {
-        this.id = id;
+    public enum MessageType {
+        TEXT,
+        IMAGE,
+        FILE,
+        SYSTEM
     }
 
-    public String getName() {
-        return name;
+    public Message() {
+        this.timestamp = LocalDateTime.now();
+        this.read = false;
+        this.status = MessageStatus.SENT;
+        this.type = MessageType.TEXT;
+        this.deleted = false;
+        this.edited = false;
+        this.reactions = new HashMap<>();
+        this.metadata = new HashMap<>();
     }
 
-    public void setName(String name) {
-        this.name = name;
+    // Getter and setter for _id
+    public String get_id() {
+        return _id;
     }
 
-    public String getEmail() {
-        return email;
+    public void set_id(String _id) {
+        this._id = _id;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
+    // Additional getters and setters for compatibility
+    public String getSenderId() {
+        return senderId;
     }
 
-    public String getPhoneNumber() {
-        return phoneNumber;
+    public void setSenderId(String senderId) {
+        this.senderId = senderId;
     }
 
-    public void setPhoneNumber(String phoneNumber) {
-        this.phoneNumber = phoneNumber;
+    public String getRecipientId() {
+        return recipientId;
     }
-
-    public String getLocation() {
-        return location;
-    }
-
-    public void setLocation(String location) {
-        this.location = location;
-    }
-
-    public String getSpecialties() {
-        return specialties;
-    }
-
-    public void setSpecialties(String specialties) {
-        this.specialties = specialties;
-    }
-
-    public String getExperience() {
-        return experience;
-    }
-
-    public void setExperience(String experience) {
-        this.experience = experience;
-    }
-
-    public String getPortfolioUrl() {
-        return portfolioUrl;
-    }
-
-    public void setPortfolioUrl(String portfolioUrl) {
-        this.portfolioUrl = portfolioUrl;
-    }
-
-    public String getAvatarUrl() {
-        return avatarUrl;
-    }
-
-    public void setAvatarUrl(String avatarUrl) {
-        this.avatarUrl = avatarUrl;
-    }
-
-    public String getQualifications() {
-        return qualifications;
-    }
-
-    public void setQualifications(String qualifications) {
-        this.qualifications = qualifications;
-    }
-
-    public String getBudget() {
-        return budget;
-    }
-
-    public void setBudget(String budget) {
-        this.budget = budget;
-    }
-
-    public Date getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(Date createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public Date getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(Date updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-} 
+}

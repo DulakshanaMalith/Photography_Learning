@@ -10,7 +10,10 @@ import Chat from './pages/Chat';
 import Notifications from './pages/Notifications';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Profile from './pages/Profile';
+import EditProfile from './pages/EditProfile';
 import Error from './pages/Error';
+import Home from './pages/Home';
 import { AuthProvider } from './context/AuthContext';
 
 const theme = createTheme({
@@ -33,13 +36,16 @@ function App() {
         <AuthProvider>
           <Layout>
             <Routes>
-              <Route path="/" element={<Feed />} />
+              <Route path="/" element={<Home />} />
+              <Route path="/feed" element={<Feed />} />
               <Route path="/photographers" element={<Photographers />} />
               <Route path="/learning-plans" element={<LearningPlans />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/edit-profile" element={<EditProfile />} />
               <Route path="*" element={<Error />} />
             </Routes>
           </Layout>

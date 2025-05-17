@@ -11,6 +11,7 @@ import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.time.LocalDateTime;
 
 @Data
 @AllArgsConstructor
@@ -55,6 +56,27 @@ public class User {
     @Getter @Setter
     private Set<String> roles = new HashSet<>();
 
+    @Getter @Setter
+    private String username;
+
+    @Getter @Setter
+    private String role;
+
+    @Getter @Setter
+    private boolean online;
+
+    @Getter @Setter
+    private Long unreadCount;
+
+    @Getter @Setter
+    private String lastMessage;
+
+    @Getter @Setter
+    private boolean archived;
+
+    @Getter @Setter
+    private LocalDateTime lastSeen;
+
     public User() {
         this.roles.add("ROLE_USER");
     }
@@ -98,5 +120,29 @@ public class User {
 
     public void setRoles(Set<String> roles) {
         this.roles = roles;
+    }
+
+    public String getGoogleId() {
+        return googleId;
+    }
+
+    public void setGoogleId(String googleId) {
+        this.googleId = googleId;
+    }
+
+    public void setUnreadCount(Long unreadCount) {
+        this.unreadCount = unreadCount;
+    }
+
+    public void setLastMessage(String lastMessage) {
+        this.lastMessage = lastMessage;
+    }
+
+    public String getAvatar() {
+        return avatar;
+    }
+
+    public void setAvatar(String avatar) {
+        this.avatar = avatar;
     }
 } 

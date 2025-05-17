@@ -150,22 +150,40 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserData = async (token) => {
     try {
+      console.log('Debug - fetchUserData - Attempting to fetch user data with token:', token ? token.substring(0, 20) + '...' : 'null');
+      
       const response = await axios.get('http://localhost:8080/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
+      
+      console.log('Debug - fetchUserData - Response received:', response.status);
       console.log('User data fetched:', response.data);
-      setUser(response.data);
+      
+      // Add token to user object
+      const userWithToken = {
+        ...response.data,
+        token: token
+      };
+      setUser(userWithToken);
       return true;
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('Debug - fetchUserData - Error:', {
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+        headers: error.response?.headers
+      });
+      
       if (error.response?.status === 401) {
+        console.log('Debug - fetchUserData - 401 received, attempting token refresh');
         const refreshed = await refreshToken();
         if (refreshed) {
+          console.log('Debug - fetchUserData - Token refreshed successfully, retrying fetch');
           return fetchUserData(localStorage.getItem('token'));
         }
+        console.log('Debug - fetchUserData - Token refresh failed, clearing auth state');
         setAuthToken(null);
         setUser(null);
         navigate('/login');
@@ -176,18 +194,30 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const initializeAuth = async () => {
+      console.log('Debug - initializeAuth - Starting authentication initialization');
       const token = localStorage.getItem('token');
-      console.log('Initial token:', token ? 'exists' : 'null');
+      console.log('Debug - initializeAuth - Initial token:', token ? token.substring(0, 20) + '...' : 'null');
       
       if (token) {
-        setAuthToken(token);
+        console.log('Debug - initializeAuth - Token found, setting auth token');
+        const tokenSet = setAuthToken(token);
+        if (!tokenSet) {
+          console.log('Debug - initializeAuth - Failed to set auth token');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Debug - initializeAuth - Fetching user data');
         const success = await fetchUserData(token);
         if (!success) {
+          console.log('Debug - initializeAuth - Failed to fetch user data');
           setAuthToken(null);
           setUser(null);
+        } else {
+          console.log('Debug - initializeAuth - User data fetched successfully');
         }
       } else {
-        console.log('No token found');
+        console.log('Debug - initializeAuth - No token found');
       }
       setLoading(false);
     };
@@ -210,8 +240,13 @@ export const AuthProvider = ({ children }) => {
       const { token, user } = response.data;
       console.log('Login successful, token received');
       setAuthToken(token);
-      setUser(user);
-      navigate('/');
+      // Add token to user object
+      const userWithToken = {
+        ...user,
+        token: token
+      };
+      setUser(userWithToken);
+      navigate('/feed');
     } catch (error) {
       console.error('Login error:', error);
       if (error.response?.data?.message) {
@@ -231,8 +266,13 @@ export const AuthProvider = ({ children }) => {
       const { token, user } = response.data;
       console.log('Registration successful, token received');
       setAuthToken(token);
-      setUser(user);
-      navigate('/');
+      // Add token to user object
+      const userWithToken = {
+        ...user,
+        token: token
+      };
+      setUser(userWithToken);
+      navigate('/feed');
     } catch (error) {
       console.error('Registration error:', error);
       throw error.response?.data || { message: 'An error occurred during registration' };
@@ -249,16 +289,49 @@ export const AuthProvider = ({ children }) => {
 
   const googleLogin = async (token) => {
     try {
-      console.log('Attempting Google login');
-      const response = await axios.post('http://localhost:8080/api/auth/google', { token });
+      console.log('Attempting Google login with token:', token.substring(0, 20) + '...');
+      
+      // Ensure we're sending the token with the correct key
+      const requestData = {
+        credential: token
+      };
+      
+      console.log('Sending request with data:', requestData);
+      
+      const response = await axios.post('http://localhost:8080/api/auth/google', 
+        requestData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+      
+      if (!response.data || !response.data.token) {
+        console.error('Invalid response from server:', response.data);
+        throw new Error('Invalid response from server');
+      }
+      
       const { token: jwtToken, user } = response.data;
-      console.log('Google login successful, token received:', jwtToken);
+      console.log('Google login successful, token received:', jwtToken.substring(0, 20) + '...');
       setAuthToken(jwtToken);
-      setUser(user);
-      navigate('/');
+      // Add token to user object
+      const userWithToken = {
+        ...user,
+        token: jwtToken
+      };
+      setUser(userWithToken);
+      navigate('/feed');
     } catch (error) {
       console.error('Google login error:', error);
-      throw error.response?.data || { message: 'An error occurred during Google login' };
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('An error occurred during Google login');
+      }
     }
   };
 

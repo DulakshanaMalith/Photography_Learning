@@ -4,6 +4,7 @@ import com.plp.model.Message;
 import com.plp.model.User;
 import com.plp.service.ChatService;
 import com.plp.service.UserService;
+import com.plp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -13,29 +14,44 @@ import org.springframework.stereotype.Controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
 
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.HashMap;
+import com.plp.model.Notification;
 
 @Controller
+@RequestMapping("/api/chat")
 public class ChatController {
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
 
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatService chatService;
     private final UserService userService;
+    private final NotificationService notificationService;
 
     @Autowired
     public ChatController(
         SimpMessagingTemplate messagingTemplate,
         ChatService chatService,
-        UserService userService
+        UserService userService,
+        NotificationService notificationService
     ) {
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
         this.userService = userService;
+        this.notificationService = notificationService;
     }
 
     @MessageMapping("/chat")
@@ -63,14 +79,30 @@ public class ChatController {
                 "/queue/messages",
                 savedMessage
             );
-            
-            // Send DELIVERED status to sender
-            savedMessage.setStatus(Message.MessageStatus.DELIVERED);
-            messagingTemplate.convertAndSendToUser(
-                message.getSenderId(),
-                "/queue/messages",
-                savedMessage
-            );
+
+            // Create notification for recipient
+            System.out.println("[DEBUG] senderId: " + message.getSenderId() + ", recipientId: " + message.getRecipientId());
+            User sender = userService.getUserById(message.getSenderId());
+            if (sender == null) {
+                System.out.println("[DEBUG] Sender not found for senderId: " + message.getSenderId());
+            }
+            if (sender != null && !message.getSenderId().equals(message.getRecipientId())) {
+                Notification notification = new Notification();
+                notification.setUserId(message.getRecipientId());
+                notification.setType("message");
+                Notification.Sender senderInfo = new Notification.Sender();
+                senderInfo.setId(sender.getId());
+                senderInfo.setName(sender.getName());
+                senderInfo.setAvatar(sender.getAvatar());
+                notification.setSender(senderInfo);
+                notification.setPostId(savedMessage.get_id()); // Use postId field for messageId
+                notification.setRead(false);
+                notification.setCreatedAt(new java.util.Date());
+                notificationService.createNotification(notification);
+                System.out.println("[DEBUG] Created message notification for userId: " + notification.getUserId() + ", sender: " + senderInfo.getName());
+            } else {
+                System.out.println("[DEBUG] Notification not created: sender is null or senderId == recipientId");
+            }
             
             logger.debug("Message sent to both sender and recipient");
         } catch (Exception e) {
@@ -141,17 +173,18 @@ public class ChatController {
             Message message = chatService.getMessageById(messageId);
             if (message != null && message.getSenderId().equals(userId)) {
                 chatService.deleteMessage(messageId);
-                
+                // Fetch the updated (deleted) message
+                Message updatedMessage = chatService.getMessageById(messageId);
                 // Notify both users about the deletion
                 messagingTemplate.convertAndSendToUser(
-                    message.getSenderId(),
+                    updatedMessage.getSenderId(),
                     "/queue/messages",
-                    message
+                    updatedMessage
                 );
                 messagingTemplate.convertAndSendToUser(
-                    message.getRecipientId(),
+                    updatedMessage.getRecipientId(),
                     "/queue/messages",
-                    message
+                    updatedMessage
                 );
             }
         } catch (Exception e) {
@@ -309,6 +342,52 @@ public class ChatController {
             );
         } catch (Exception e) {
             logger.error("Error handling chat archive: {}", e.getMessage(), e);
+        }
+    }
+
+    @MessageMapping("/message/delivered")
+    public void handleMessageDelivered(@Payload Map<String, String> payload) {
+        try {
+            String messageId = payload.get("messageId");
+            String userId = payload.get("userId");
+            logger.debug("Message delivered: {} by user: {}", messageId, userId);
+            
+            Message message = chatService.getMessageById(messageId);
+            if (message != null && message.getRecipientId().equals(userId)) {
+                message.setStatus(Message.MessageStatus.DELIVERED);
+                Message updatedMessage = chatService.saveMessage(message);
+                // Notify sender about delivered status
+                messagingTemplate.convertAndSendToUser(
+                    message.getSenderId(),
+                    "/queue/messages",
+                    updatedMessage
+                );
+            }
+        } catch (Exception e) {
+            logger.error("Error handling message delivered status: {}", e.getMessage(), e);
+        }
+    }
+
+    @PostMapping("/upload-audio")
+    public ResponseEntity<?> uploadAudio(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            logger.error("Audio upload failed: No file uploaded");
+            return ResponseEntity.badRequest().body("No file uploaded");
+        }
+        try {
+            String uploadDir = "uploads/audio/";
+            File dir = new File(uploadDir);
+            if (!dir.exists()) dir.mkdirs();
+            String ext = file.getOriginalFilename() != null && file.getOriginalFilename().contains(".") ? file.getOriginalFilename().substring(file.getOriginalFilename().lastIndexOf('.')) : ".webm";
+            String filename = UUID.randomUUID().toString() + ext;
+            Path filePath = Paths.get(uploadDir, filename);
+            Files.write(filePath, file.getBytes());
+            String fileUrl = "/" + uploadDir + filename;
+            logger.info("Audio uploaded: path={}, size={} bytes, url={}", filePath.toAbsolutePath(), file.getSize(), fileUrl);
+            return ResponseEntity.ok().body(Map.of("url", fileUrl));
+        } catch (IOException e) {
+            logger.error("Failed to upload audio: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to upload audio");
         }
     }
 } 

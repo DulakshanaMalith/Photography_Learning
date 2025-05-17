@@ -88,4 +88,6 @@ public class Comment {
     public void setUpdatedAt(Date updatedAt) {
         this.updatedAt = updatedAt;
     }
+
+    /*update comment */
 } 

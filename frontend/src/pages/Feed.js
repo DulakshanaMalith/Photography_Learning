@@ -1189,3 +1189,138 @@ const Feed = () => {
                         </IconButton>
                       </Box>
                     )}
+                    
+                  </CardContent>
+                </Card>
+              ))}
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 1,
+                mt: 2,
+              }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Write a comment..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                    },
+                  }}
+                />
+                <Button 
+                  variant="contained" 
+                  onClick={() => handleComment(post.id)}
+                  sx={{ 
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    px: 3,
+                  }}
+                >
+                  Post
+                </Button>
+              </Box>
+            </Box>
+          </Card>
+        </Zoom>
+      ))}
+
+      <Dialog
+        open={isEditing}
+        onClose={() => {
+          setIsEditing(false);
+          setEditingPost(null);
+          setEditText('');
+        }}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden',
+          },
+        }}
+      >
+        <DialogTitle>Edit Post</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            sx={{
+              mt: 2,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+              },
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button 
+            onClick={() => {
+              setIsEditing(false);
+              setEditingPost(null);
+              setEditText('');
+            }}
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={async () => {
+              if (!editingPost || !editingPost.id) return;
+              try {
+                const headers = getAuthHeader();
+                if (!headers) return;
+                await axios.put(`http://localhost:8080/api/feed/${editingPost.id}`, {
+                  content: editText,
+                }, {
+                  headers: headers
+                });
+                setIsEditing(false);
+                setEditingPost(null);
+                setEditText('');
+                fetchPosts();
+              } catch (error) {
+                console.error('Error editing post:', error);
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                  if (error.response?.data?.includes('not authorized')) {
+                    alert('You are not authorized to edit this post');
+                  } else {
+                    console.warn('Authentication failed. Please log in again.');
+                    logout();
+                  }
+                }
+              }
+            }}
+            variant="contained"
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 3,
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={shareSnackbar.open}
+        autoHideDuration={3000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert severity="success" onClose={handleCloseSnackbar}>
+          {shareSnackbar.message}
+        </Alert>
+      </Snackbar>
+    </Container>
+  );
+};
+
+export default Feed; 

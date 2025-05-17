@@ -1,8 +1,9 @@
 package com.plp.controller;
 
-import java.util.HashMap;
-import java.util.Map;
-
+import com.plp.model.User;
+import com.plp.repository.UserRepository;
+import com.plp.security.UserDetailsImpl;
+import com.plp.service.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,24 +11,26 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.web.bind.annotation.*;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken.Payload;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
+import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.api.client.json.jackson2.JacksonFactory;
+import java.util.Collections;
 
-import com.plp.model.User;
-import com.plp.repository.UserRepository;
-import com.plp.security.UserDetailsImpl;
-import com.plp.service.JwtService;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "https://accounts.google.com", "http://localhost:8080"}, 
+    allowCredentials = "true", 
+    allowedHeaders = "*",
+    methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class AuthController {
 
     @Autowired
@@ -153,8 +156,92 @@ public class AuthController {
 
     @PostMapping("/google")
     public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> tokenRequest) {
-        // TODO: Implement Google login
-        return ResponseEntity.ok(Map.of("message", "Google login not implemented yet"));
+        try {
+            System.out.println("Received token request: " + tokenRequest);
+            
+            String idToken = tokenRequest.get("credential");
+            if (idToken == null) {
+                System.out.println("Token is missing from request");
+                return ResponseEntity.badRequest().body(Map.of("message", "Token is required"));
+            }
+
+            System.out.println("Received token: " + idToken.substring(0, 20) + "...");
+
+            try {
+                // Create HTTP transport
+                NetHttpTransport transport = new NetHttpTransport();
+                JacksonFactory jsonFactory = new JacksonFactory();
+                
+                // Create verifier
+                GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(transport, jsonFactory)
+                    .setAudience(Collections.singletonList("352546676662-gbiq96v7jgk9uuiknjf9369jccchmcs6.apps.googleusercontent.com"))
+                    .build();
+
+                System.out.println("Verifying token...");
+                GoogleIdToken googleIdToken = verifier.verify(idToken);
+                
+                if (googleIdToken == null) {
+                    System.out.println("Token verification failed - token is null");
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Invalid ID token"));
+                }
+
+                Payload payload = googleIdToken.getPayload();
+                
+                // Verify the token hasn't expired
+                long currentTimeSeconds = System.currentTimeMillis() / 1000;
+                long expirationTimeSeconds = payload.getExpirationTimeSeconds();
+                
+                System.out.println("Token expiration check - Current time: " + currentTimeSeconds + 
+                                 ", Expiration time: " + expirationTimeSeconds);
+                
+                if (expirationTimeSeconds < currentTimeSeconds) {
+                    System.out.println("Token has expired");
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Token has expired"));
+                }
+
+                String email = payload.getEmail();
+                String name = (String) payload.get("name");
+                String googleId = payload.getSubject();
+
+                System.out.println("Verified token for email: " + email);
+                System.out.println("User name: " + name);
+                System.out.println("Google ID: " + googleId);
+
+                // Check if user exists
+                User user = userRepository.findByEmail(email)
+                    .orElseGet(() -> {
+                        System.out.println("Creating new user for email: " + email);
+                        // Create new user if doesn't exist
+                        User newUser = new User();
+                        newUser.setEmail(email);
+                        newUser.setName(name);
+                        newUser.setGoogleId(googleId);
+                        return userRepository.save(newUser);
+                    });
+
+                // Generate JWT token
+                UserDetailsImpl userDetails = UserDetailsImpl.build(user);
+                String jwt = jwtService.generateToken(userDetails);
+
+                Map<String, Object> response = new HashMap<>();
+                response.put("token", jwt);
+                response.put("user", user);
+
+                return ResponseEntity.ok(response);
+            } catch (Exception e) {
+                System.err.println("Error verifying token: " + e.getMessage());
+                e.printStackTrace();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Error verifying token: " + e.getMessage()));
+            }
+        } catch (Exception e) {
+            System.err.println("Error during Google login: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("message", "Error during Google login: " + e.getMessage()));
+        }
     }
 
     @PostMapping("/refresh")

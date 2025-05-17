@@ -17,17 +17,35 @@ import {
   IconButton,
   Snackbar,
   Alert,
+  Paper,
+  InputAdornment,
+  Chip,
+  Fade,
+  Zoom,
+  useTheme,
 } from '@mui/material';
-import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import {
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Search as SearchIcon,
+  Camera as CameraIcon,
+  AttachMoney as MoneyIcon,
+  School as SchoolIcon,
+  Link as LinkIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+} from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
 const Photographers = () => {
   const [photographers, setPhotographers] = useState([]);
+  const [filteredPhotographers, setFilteredPhotographers] = useState([]);
   const [selectedPhotographer, setSelectedPhotographer] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -37,16 +55,30 @@ const Photographers = () => {
     portfolioUrl: '',
   });
   const { user, isAuthenticated } = useAuth();
+  const theme = useTheme();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    console.log('Debug - Auth State:', {
-      user,
-      isAuthenticated,
-      token,
-    });
     fetchPhotographers();
   }, [user, isAuthenticated]);
+
+  useEffect(() => {
+    const filtered = photographers.filter(photographer => {
+      const searchLower = searchQuery.toLowerCase().trim();
+      if (!searchLower) return true;
+
+      const searchableFields = [
+        photographer.name,
+        photographer.email,
+        photographer.phone,
+        photographer.qualifications,
+        photographer.budget?.toString(),
+        photographer.portfolioUrl
+      ].map(field => (field || '').toLowerCase());
+
+      return searchableFields.some(field => field.includes(searchLower));
+    });
+    setFilteredPhotographers(filtered);
+  }, [searchQuery, photographers]);
 
   const fetchPhotographers = async () => {
     try {
@@ -120,7 +152,7 @@ const Photographers = () => {
     setFormData({
       name: photographer.name || '',
       email: photographer.email || '',
-      phone: photographer.phoneNumber || '',
+      phone: photographer.phone || '',
       qualifications: photographer.qualifications || '',
       budget: photographer.budget || '',
       portfolioUrl: photographer.portfolioUrl || '',
@@ -187,12 +219,65 @@ const Photographers = () => {
   };
 
   return (
+    <Box>
+      {/* Hero Section */}
+      <Box
+        sx={{
+          backgroundImage: 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url("/images/photography-hero.jpg")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          height: '300px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          mb: 4,
+        }}
+      >
+        <Container maxWidth="md">
+          <Typography variant="h2" align="center" gutterBottom>
+            Find Your Perfect Photographer
+          </Typography>
+          <Typography variant="h5" align="center">
+            Connect with professional photographers for your special moments
+          </Typography>
+        </Container>
+      </Box>
+
     <Container maxWidth="lg">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">Photographers</Typography>
+        {/* Search and Filter Section */}
+        <Paper
+          elevation={3}
+          sx={{
+            p: 2,
+            mb: 4,
+            borderRadius: 2,
+            backgroundColor: theme.palette.background.paper,
+          }}
+        >
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                variant="outlined"
+                placeholder="Search by name, email, phone, qualifications, budget..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                helperText={searchQuery && `Found ${filteredPhotographers.length} photographers`}
+              />
+            </Grid>
+            <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button
           variant="contained"
           color="primary"
+                startIcon={<CameraIcon />}
           onClick={() => {
             if (!isAuthenticated) {
               setSnackbar({
@@ -216,49 +301,119 @@ const Photographers = () => {
         >
           Add Photographer Profile
         </Button>
-      </Box>
+            </Grid>
+          </Grid>
+        </Paper>
 
+        {/* Photographers Grid */}
       <Grid container spacing={3}>
-        {photographers.map((photographer) => (
+          {filteredPhotographers.map((photographer, index) => (
           <Grid item xs={12} sm={6} md={4} key={photographer.id}>
-            <Card>
-              <CardContent>
+              <Zoom in style={{ transitionDelay: `${index * 50}ms` }}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: theme.shadows[8],
+                    },
+                  }}
+                >
+                  <CardContent sx={{ flexGrow: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Avatar sx={{ mr: 2 }}>{photographer.name?.[0] || '?'}</Avatar>
-                  <Typography variant="h6">{photographer.name || 'Unknown Photographer'}</Typography>
+                      <Avatar
+                        sx={{
+                          width: 60,
+                          height: 60,
+                          mr: 2,
+                          bgcolor: theme.palette.primary.main,
+                          fontSize: '1.5rem',
+                        }}
+                      >
+                        {photographer.name?.[0] || '?'}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" gutterBottom>
+                          {photographer.name || 'Unknown Photographer'}
+                        </Typography>
+                        <Chip
+                          icon={<MoneyIcon />}
+                          label={`$${photographer.budget || '0'}`}
+                          size="small"
+                          color="primary"
+                          sx={{ mr: 1 }}
+                        />
+                        {photographer.qualifications && (
+                          <Chip
+                            icon={<SchoolIcon />}
+                            label="Professional"
+                            size="small"
+                            color="secondary"
+                          />
+                        )}
+                      </Box>
                 </Box>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Email: {photographer.email}
+
+                    <Box sx={{ mt: 2 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ display: 'flex', alignItems: 'center', mb: 1 }}
+                      >
+                        <EmailIcon sx={{ mr: 1, fontSize: '1rem' }} />
+                        {photographer.email}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Qualifications: {photographer.qualifications || 'Not specified'}
+                      {photographer.phone && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ display: 'flex', alignItems: 'center', mb: 1 }}
+                        >
+                          <PhoneIcon sx={{ mr: 1, fontSize: '1rem' }} />
+                          {photographer.phone}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Budget: ${photographer.budget || '0'}
+                      )}
+                      {photographer.qualifications && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ display: 'flex', alignItems: 'center', mb: 1 }}
+                        >
+                          <SchoolIcon sx={{ mr: 1, fontSize: '1rem' }} />
+                          {photographer.qualifications}
                 </Typography>
+                      )}
                 {photographer.portfolioUrl && (
-                  <Typography variant="body2" color="text.secondary">
-                    Portfolio: {photographer.portfolioUrl}
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ display: 'flex', alignItems: 'center' }}
+                        >
+                          <LinkIcon sx={{ mr: 1, fontSize: '1rem' }} />
+                          <a
+                            href={photographer.portfolioUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: theme.palette.primary.main }}
+                          >
+                            View Portfolio
+                          </a>
                   </Typography>
                 )}
+                    </Box>
               </CardContent>
-              <CardActions sx={{ justifyContent: 'space-between' }}>
+
+                  <CardActions sx={{ justifyContent: 'space-between', p: 2 }}>
                 <Box>
-                  <Button
-                    size="small"
-                    color="primary"
-                    onClick={() => handleHire(photographer)}
-                  >
-                    Hire Me
-                  </Button>
-                </Box>
-                {isAuthenticated && (
-                  <Box>
+                      {isOwner(photographer) && (
+                        <>
                     <IconButton
                       size="small"
                       color="primary"
                       onClick={() => handleEdit(photographer)}
-                      title="Edit profile"
                     >
                       <EditIcon />
                     </IconButton>
@@ -266,55 +421,146 @@ const Photographers = () => {
                       size="small"
                       color="error"
                       onClick={() => handleDelete(photographer)}
-                      title="Delete profile"
                     >
                       <DeleteIcon />
                     </IconButton>
+                        </>
+                      )}
                   </Box>
-                )}
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={() => handleHire(photographer)}
+                    >
+                      Contact
+                    </Button>
               </CardActions>
             </Card>
+              </Zoom>
           </Grid>
         ))}
       </Grid>
 
+        {/* Contact Dialog */}
+        <Dialog 
+          open={!!selectedPhotographer && !isEditing} 
+          onClose={() => {
+            setSelectedPhotographer(null);
+            setIsEditing(false);
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            Contact {selectedPhotographer?.name || 'Photographer'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Contact Information
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <EmailIcon color="primary" />
+                  <Typography>
+                    Email: {selectedPhotographer?.email || 'Not available'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PhoneIcon color="primary" />
+                  <Typography>
+                    Phone: {selectedPhotographer?.phone || 'Not available'}
+                  </Typography>
+                </Box>
+                {selectedPhotographer?.portfolioUrl && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LinkIcon color="primary" />
+                    <Typography>
+                      Portfolio: {' '}
+                      <a
+                        href={selectedPhotographer.portfolioUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: theme.palette.primary.main }}
+                      >
+                        View Portfolio
+                      </a>
+                    </Typography>
+                  </Box>
+                )}
+                {selectedPhotographer?.qualifications && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SchoolIcon color="primary" />
+                    <Typography>
+                      Qualifications: {selectedPhotographer.qualifications}
+                    </Typography>
+                  </Box>
+                )}
+                {selectedPhotographer?.budget && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <MoneyIcon color="primary" />
+                    <Typography>
+                      Budget: ${selectedPhotographer.budget}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSelectedPhotographer(null)}>Close</Button>
+            {selectedPhotographer?.email && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<EmailIcon />}
+                onClick={() => window.location.href = `mailto:${selectedPhotographer.email}`}
+              >
+                Send Email
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
+
+        {/* Add/Edit Dialog */}
       <Dialog
         open={dialogOpen}
         onClose={() => {
           setDialogOpen(false);
           setIsEditing(false);
+            setSelectedPhotographer(null);
         }}
-        key="add-photographer-dialog"
+          maxWidth="sm" 
+          fullWidth
       >
-        <DialogTitle>{isEditing ? 'Edit Photographer Profile' : 'Add Photographer Profile'}</DialogTitle>
+          <DialogTitle>
+            {isEditing ? 'Edit Photographer Profile' : 'Add Photographer Profile'}
+          </DialogTitle>
         <DialogContent>
+            <Box sx={{ pt: 2 }}>
           <TextField
-            autoFocus
-            margin="dense"
+                fullWidth
             label="Name"
-            type="text"
-            fullWidth
-            required
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                margin="normal"
+                required
           />
           <TextField
-            margin="dense"
+                fullWidth
             label="Email"
-            type="email"
-            fullWidth
-            required
-            disabled={true}
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                margin="normal"
+                required
+                type="email"
           />
           <TextField
             fullWidth
-            label="Phone Number"
+                label="Phone"
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
             margin="normal"
-            required
           />
           <TextField
             fullWidth
@@ -322,16 +568,19 @@ const Photographers = () => {
             value={formData.qualifications}
             onChange={(e) => setFormData({ ...formData, qualifications: e.target.value })}
             margin="normal"
-            required
+                multiline
+                rows={2}
           />
           <TextField
             fullWidth
             label="Budget"
-            type="number"
             value={formData.budget}
             onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
             margin="normal"
-            required
+                type="number"
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                }}
           />
           <TextField
             fullWidth
@@ -340,45 +589,33 @@ const Photographers = () => {
             onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })}
             margin="normal"
           />
+            </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setDialogOpen(false);
-            setIsEditing(false);
-          }}>Cancel</Button>
+            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained" color="primary">
-            {isEditing ? 'Update' : 'Submit'}
+              {isEditing ? 'Update' : 'Add'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={!!selectedPhotographer && !isEditing}
-        onClose={() => setSelectedPhotographer(null)}
-        key="contact-info-dialog"
-      >
-        <DialogTitle>Contact Information</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1">
-            Phone: {selectedPhotographer?.phone || 'Not available'}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSelectedPhotographer(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
+        {/* Snackbar */}
       <Snackbar 
         open={snackbar.open} 
         autoHideDuration={6000} 
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          <Alert
+            onClose={handleCloseSnackbar}
+            severity={snackbar.severity}
+            sx={{ width: '100%' }}
+          >
           {snackbar.message}
         </Alert>
       </Snackbar>
     </Container>
+    </Box>
   );
 };
 

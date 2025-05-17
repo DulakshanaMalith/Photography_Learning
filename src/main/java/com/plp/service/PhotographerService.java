@@ -1,8 +1,7 @@
 package com.plp.service;
 
-import java.util.List;
-
 import com.plp.model.Photographer;
+import java.util.List;
 
 public interface PhotographerService {
     List<Photographer> getAllPhotographers(int page, int size);

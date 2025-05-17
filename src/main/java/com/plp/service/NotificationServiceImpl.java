@@ -19,11 +19,14 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void markAllAsRead(String userId) {
+        System.out.println("[DEBUG] User ID for markAllAsRead: " + userId);
         List<Notification> notifications = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        System.out.println("[DEBUG] Marking all notifications as read for userId: " + userId + ", count: " + notifications.size());
         for (Notification n : notifications) {
             n.setRead(true);
         }
         notificationRepository.saveAll(notifications);
+        System.out.println("[DEBUG] All notifications marked as read and saved.");
     }
 
     @Override

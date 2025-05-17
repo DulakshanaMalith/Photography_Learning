@@ -1,110 +1,50 @@
 package com.plp.security;
 
-import com.plp.service.JwtService;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import io.jsonwebtoken.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
+import java.util.Date;
 
 @Component
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
+public class JwtUtils {
+    @Value("${jwt.secret}")
+    private String jwtSecret;
 
-    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+    @Value("${jwt.expiration}")
+    private int jwtExpirationMs;
 
-    private final JwtService jwtService;
-    private final UserDetailsService userDetailsService;
+    public String generateJwtToken(Authentication authentication) {
+        UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService) {
-        this.jwtService = jwtService;
-        this.userDetailsService = userDetailsService;
+        return Jwts.builder()
+                .setSubject((userPrincipal.getUsername()))
+                .setIssuedAt(new Date())
+                .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
+                .signWith(SignatureAlgorithm.HS512, jwtSecret)
+                .compact();
     }
 
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain
-    ) throws ServletException, IOException {
-        String requestURI = request.getRequestURI();
-        logger.debug("Processing request for URI: {}", requestURI);
-        
-        // Skip authentication for specific public endpoints
-        if (requestURI.equals("/api/auth/login") || 
-            requestURI.equals("/api/auth/register") ||
-            requestURI.equals("/api/auth/refresh") ||
-            requestURI.startsWith("/api/notifications/") ||
-            requestURI.startsWith("/socket.io/")) {
-            logger.debug("Skipping authentication for public endpoint: {}", requestURI);
-            filterChain.doFilter(request, response);
-            return;
-        }
+    public String getUserNameFromJwtToken(String token) {
+        return Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token).getBody().getSubject();
+    }
 
-        // Handle preflight requests
-        if (request.getMethod().equals("OPTIONS")) {
-            response.setStatus(HttpServletResponse.SC_OK);
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        final String authHeader = request.getHeader("Authorization");
-        logger.debug("Auth header: {}", authHeader != null ? "exists" : "null");
-
-        // If no auth header, return 401
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            logger.error("Missing or invalid Authorization header for URI: {}", requestURI);
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("Missing or invalid authentication token");
-            return;
-        }
-
+    public boolean validateJwtToken(String authToken) {
         try {
-            String jwt = authHeader.substring(7);
-            String userEmail = jwtService.extractUsername(jwt);
-            logger.debug("Extracted username: {} for URI: {}", userEmail, requestURI);
-            
-            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
-                logger.debug("Loaded user details for: {} URI: {}", userEmail, requestURI);
-                
-                if (jwtService.isTokenValid(jwt, userDetails)) {
-                    logger.debug("Token is valid for user: {} URI: {}", userEmail, requestURI);
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                    );
-                    authToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                    );
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                    logger.debug("Authentication set in SecurityContext for user: {} URI: {}", userEmail, requestURI);
-                    filterChain.doFilter(request, response);
-                    return;
-                } else {
-                    logger.error("Token validation failed for user: {} URI: {}", userEmail, requestURI);
-                }
-            } else {
-                logger.error("No user email in token or authentication already exists for URI: {}", requestURI);
-            }
-            
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("Invalid or expired token");
-            
-        } catch (Exception e) {
-            logger.error("Error processing JWT token for URI {}: {}", requestURI, e.getMessage(), e);
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("Invalid or expired token");
+            Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(authToken);
+            return true;
+        } catch (SignatureException e) {
+            System.err.println("Invalid JWT signature: " + e.getMessage());
+        } catch (MalformedJwtException e) {
+            System.err.println("Invalid JWT token: " + e.getMessage());
+        } catch (ExpiredJwtException e) {
+            System.err.println("JWT token is expired: " + e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            System.err.println("JWT token is unsupported: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            System.err.println("JWT claims string is empty: " + e.getMessage());
         }
+        return false;
     }
 } 

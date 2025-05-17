@@ -39,7 +39,9 @@ public class ChatServiceImpl implements ChatService {
         if (message == null) {
             throw new IllegalArgumentException("Message cannot be null");
         }
-        if (!StringUtils.hasText(message.getContent())) {
+        // Only require non-empty content for TEXT messages
+        if ((!StringUtils.hasText(message.getContent())) &&
+            (message.getType() == null || message.getType().name().equalsIgnoreCase("TEXT"))) {
             throw new IllegalArgumentException("Message content cannot be empty");
         }
         if (!StringUtils.hasText(message.getSenderId()) || !StringUtils.hasText(message.getRecipientId())) {

@@ -1,16 +1,15 @@
 package com.plp.service.impl;
 
-import java.util.Date;
-import java.util.List;
-
+import com.plp.model.Photographer;
+import com.plp.repository.PhotographerRepository;
+import com.plp.service.PhotographerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
-import com.plp.model.Photographer;
-import com.plp.repository.PhotographerRepository;
-import com.plp.service.PhotographerService;
+import java.util.Date;
+import java.util.List;
 
 @Service
 public class PhotographerServiceImpl implements PhotographerService {

@@ -35,7 +35,9 @@ public class NotificationController {
     // Mark all as read
     @PutMapping("/mark-all-read")
     public ResponseEntity<?> markAllAsRead(Authentication authentication) {
-        String userId = authentication.getName();
+        User user = userRepository.findByEmail(authentication.getName())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+        String userId = user.getId();
         notificationService.markAllAsRead(userId);
         return ResponseEntity.ok().build();
     }
